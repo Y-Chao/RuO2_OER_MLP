@@ -1,0 +1,13 @@
+# Dataset files
+test_lasp/*
+train_NN/*
+
+# Presentation files
+weekly_update/*
+
+# tmp
+tmp/*
+
+# vscode congiguration
+.vscode/*
+
