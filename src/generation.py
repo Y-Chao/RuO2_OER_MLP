@@ -239,11 +239,43 @@ class Growth_Generation(Generation):
 
     name = "GrowthGeneration"
 
-    def __init__(self, atoms=None, source=None, dimension=3, use_mic=True):
-        super().__init__(atoms, source, use_mic)
-        self.dimension = dimension
+    def __init__(self, atoms=None, mol=None, attempts=100, growth=True, **kwargs):
+        super().__init__(atoms, **kwargs)
+        self.attempts = attempts
+        self.mol = mol
 
-    def _get_candidate(self, parent, mol):
+    def get_indices_to_grow(self, parent, indices=None, num=1):
+        if indices is None:
+            growth_indices = parent.get_surface()
+            # We will add some sorted method to get the one atom to be dissolved.
+        else:
+            growth_indices = indices
+        return self.score_growth_index(parent, growth_indices, num)
+        
+    def score_growth_index(self, parent, growth_indices, num=1):
+        """
+        Score the dissolution based on the coordination number, z position, atomic number.
+        First thing, we construct the coordination matrix.
+        """
+        growth_indices_coord = parent.coord_matrix[growth_indices]
+        growth_numbers = parent.numbers[growth_indices]
+
+        score_list = np.zeros(len(growth_indices))
+        for i in range(len(growth_indices)):
+            # limit the metal atom and the coordinate saturation atom.
+            if growth_numbers[i] > 18:
+                score_list[i] += 2
+            elif growth_numbers[i] == 1:
+                score_list[i] == 0
+            else:
+                score_list[i] += 1       
+        
+        # sort the score list
+        success_rate = np.array(score_list) / np.sum(score_list)
+        growth_index = np.random.choice(growth_indices, size=num, p=success_rate)
+        return growth_index
+
+    def _get_candidates(self, parent, mol, indices=None):
         """
         Get the candidate by the growth method.
         Parameters:
@@ -251,20 +283,36 @@ class Growth_Generation(Generation):
         Parents: Candidate
             The parent candidate.
         mol: Atoms
-            The growth molecules.
+            The growth molecules. The 1st atom is the atach atom.
         Returns:
         --------
         candidates: list
             The list of candidates.
         """
-        candidates = []
-        
-        if  isinstance(mol, list) and len(mol) == 1:
-            mol = [mol]
-        
-        for m in mol:
-            for p in parent:
-                pass
+        if mol == None:
+            mol = self.mol
+        candidates = []      
+        candidate = parent.copy()
+        growth_indices = self.get_indices_to_grow(parent, indices)
+
+        for i in range(growth_indices):
+            for j, m in enumerate(mol):
+                for _ in range(self.attempts):
+                    if j == 0:
+                        vector = self.get_sphere_vector(m.number, parent.numbers[i])
+                        attach_position = parent.positions[i]
+                    else:
+                        bond_length = np.linalg.norm(m.positions - mol.positions[j-1])
+                        vector = self.vector(bond_length)
+                        attach_position = m.positions[j-1]
+                    new_positions = attach_position + vector
+                    if self.check_new_positions(candidate, new_positions, m.number, skip_index=[]):
+                        m.position = new_positions
+                        candidate.append(m)
+                        break                    
+            candidate.add_metadata('growth_indices', i)
+            candidates.append(candidate)
+        return [candidates]    
                 
     def get_sphere_vector(self, atomic_number_i, atomic_number_j):
         """
@@ -366,7 +414,6 @@ class Dissolution_Generation(Generation):
         """
         Get the candidate by the dissolution method.
         """
-        print(self.__dict__)
         dis_indices = self.get_indices_to_dis(parent, indices)
         candidate = parent.copy()
         for i in dis_indices:
@@ -406,10 +453,6 @@ class Dissolution_Generation(Generation):
         success_rate = np.array(score_list) / np.sum(score_list)
         dis_index = np.random.choice(dis_indices, size=num, p=success_rate)
         return dis_index
-    
-class Growth_Generation(Generation):
-
-    name = "GrowthGeneration"
     
 
 def main():

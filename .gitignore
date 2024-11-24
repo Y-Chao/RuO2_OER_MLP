@@ -10,4 +10,5 @@ tmp/*
 
 # vscode congiguration
 .vscode/*
-__pycache__
+__pycache__/
+.DS_Store
