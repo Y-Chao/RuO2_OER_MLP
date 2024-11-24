@@ -1,4 +1,2 @@
-import pytest_lazyfixture
+import pytest
 from candidates import BaseCandidate
-
-def candidate()

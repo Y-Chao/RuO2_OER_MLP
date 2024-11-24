@@ -10,4 +10,4 @@ tmp/*
 
 # vscode congiguration
 .vscode/*
-
+__pycache__
