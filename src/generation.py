@@ -10,6 +10,7 @@ Define the generation section.
 """
 import os
 import re
+from copy import deepcopy
 from abc import ABC, abstractmethod
 from uuid import uuid4
 from datetime import datetime
@@ -44,6 +45,8 @@ class Generation(ABC):
         self.dimension = dimension
         self.set_limit(c1, c2)
         self.seed = seed # set the seed to generate the random number
+        if self.seed is not None:
+            np.random.seed(self.seed)
         self.workdir = os.getcwd()
         self.verbose = verbose
 
@@ -85,7 +88,7 @@ class Generation(ABC):
         """
         return []
     
-    def get_candidates(self, parent=None, indices=None):
+    def get_candidates(self, parent=None, indices=None, mol=None):
         """
         Method used to get new candidates.
         """
@@ -93,14 +96,16 @@ class Generation(ABC):
             parent = self.template
         # if mol is None:
         #     mol = self.source_library
-
         if not parent.has_metadata('parent_search_iterations'):
             parent.add_metadata("parent_search_iterations", 0)
         if not parent.has_metadata('uuid'):
             parent.add_metadata("uuid", str(uuid4()))
  
         # generate new candidates
-        candidates = self._get_candidates(parent, indices)
+        if mol is None:
+            candidates = self._get_candidates(parent, indices)
+        else:
+            candidates = self._get_candidates(parent, indices, mol)
         for candiate in candidates:
             candiate.add_metadata("generator", self.name)
             candiate.add_metadata("uuid", str(uuid4()))
@@ -184,7 +189,8 @@ class Generation(ABC):
             f.write('\n')
             f.write("The generation is %s \n"%self.name)
             f.write("The generations is started at %s\n"%today.strftime("%Y-%m-%d %H:%M:%S"))
-            f.write("The seed is %d\n"%self.seed)
+            if self.seed is not None:
+                f.write("The seed is %d\n"%self.seed)
             f.write('\n')
             # write the header
             f.write(f"{'#Candidate UUID':^50}{'Parent UUID':^50}{'Parent Search Iterations':^30}{'Generator':^40}")
@@ -225,7 +231,6 @@ class Generation(ABC):
             3: {"theta": [0, 2 * np.pi], "phi":[0, np.pi]}
         }
 
-        np.random.seed(self.seed)
         theta = np.random.uniform(*sp_coord[dim]["theta"])
         phi = np.random.uniform(*sp_coord[dim]["phi"])
         vector = r * np.array([np.sin(phi) * np.cos(theta),  # x = r sin(phi) cos(theta)
@@ -244,9 +249,23 @@ class Growth_Generation(Generation):
         self.attempts = attempts
         self.mol = mol
 
+    def random_box(self, parent, box=None):
+        """
+        Random the box size.
+        """
+        if box is None:
+            box = parent.cell
+        
+        return np.random.uniform([0,0,0],[1,1,1], size=(3,3)) * box
+        
+
     def get_indices_to_grow(self, parent, indices=None, num=1):
         if indices is None:
-            growth_indices = parent.get_surface()
+            try:
+                growth_indices = parent.get_surface()
+            except:
+                growth_indices = self.random.box(parent)
+
             # We will add some sorted method to get the one atom to be dissolved.
         else:
             growth_indices = indices
@@ -274,8 +293,13 @@ class Growth_Generation(Generation):
         success_rate = np.array(score_list) / np.sum(score_list)
         growth_index = np.random.choice(growth_indices, size=num, p=success_rate)
         return growth_index
+    
+    def get_random_rotation(self, limit=30):
+        degree = np.random.normal(loc=0, scale=limit)
 
-    def _get_candidates(self, parent, mol, indices=None):
+        return degree
+
+    def _get_candidates(self, parent, indices=None, mol=None):
         """
         Get the candidate by the growth method.
         Parameters:
@@ -294,25 +318,32 @@ class Growth_Generation(Generation):
         candidates = []      
         candidate = parent.copy()
         growth_indices = self.get_indices_to_grow(parent, indices)
+        print('tst')
 
-        for i in range(growth_indices):
-            for j, m in enumerate(mol):
-                for _ in range(self.attempts):
-                    if j == 0:
-                        vector = self.get_sphere_vector(m.number, parent.numbers[i])
-                        attach_position = parent.positions[i]
+        for i in growth_indices:
+            for _ in range(self.attempts):
+                success = True
+                ads = mol.copy()
+                vector = self.get_sphere_vector(ads.numbers[0], parent.numbers[i])
+                # change the molecule position by rotation
+                ads.rotate(self.get_random_rotation(), 'x', center=mol.positions[0])
+                #attach_position = parent.positions[i]
+                new_positions = parent.positions[i] + vector
+                for j in range(len(ads)):
+                    if self.check_new_positions(candidate, new_positions+ads.positions[j], ads.numbers[j], skip_index=[]):
+                        ads[j].position += new_positions
+                        candidate.append(ads[j]) 
                     else:
-                        bond_length = np.linalg.norm(m.positions - mol.positions[j-1])
-                        vector = self.vector(bond_length)
-                        attach_position = m.positions[j-1]
-                    new_positions = attach_position + vector
-                    if self.check_new_positions(candidate, new_positions, m.number, skip_index=[]):
-                        m.position = new_positions
-                        candidate.append(m)
-                        break                    
-            candidate.add_metadata('growth_indices', i)
-            candidates.append(candidate)
-        return [candidates]    
+                        success = False
+                        break
+                if success:
+                    break
+            print('test')
+            if success:
+                candidate.add_metadata('growth_indices', i.tolist())
+                candidate.add_metadata('growth_molecule', mol.get_chemical_formula())
+                candidates.append(candidate)
+        return candidates
                 
     def get_sphere_vector(self, atomic_number_i, atomic_number_j):
         """
@@ -332,34 +363,33 @@ class Growth_Generation(Generation):
         covalent_bondlenght = covalent_radii[atomic_number_i] + covalent_radii[atomic_number_j]
         r_min = self.c1 * covalent_bondlenght
         r_max = self.c2 * covalent_bondlenght
-        np.random.seed(self.seed)
         # the power of the r could make the uniform distribution
         r = np.random.uniform(r_min ** dim, r_max ** dim)**(1 / dim )
         return self.get_vector(r)
     
-    def check_new_positions(self, candidate, new_positions, mol):
-        """
-        Check the new positions.
-        """
-        if isinstance(mol, list) and len(mol) == 1:
-            mol = [mol]
+    # def check_new_positions(self, candidate, new_positions, mol):
+    #     """
+    #     Check the new positions.
+    #     """
+    #     if isinstance(mol, list) and len(mol) == 1:
+    #         mol = [mol]
         
-        success = False
-        for i in range(len(mol)):
-            for j in len(candidate):
-                covalent_radii_ij = covalent_radii[mol[i].number] + covalent_radii[candidate[j].number]
-                r_min = self.c1 * covalent_radii_ij
-                r_max = self.c2 * covalent_radii_ij
-                if self.mic:
-                    distances = candidate.get_mic(new_positions, candidate.positions[j], cell=candidate.cell, pbc=candidate.pbc)
-                else:
-                    distances = np.linalg.norm(new_positions - candidate.positions[j])
+    #     success = False
+    #     for i in range(len(mol)):
+    #         for j in len(candidate):
+    #             covalent_radii_ij = covalent_radii[mol[i].number] + covalent_radii[candidate[j].number]
+    #             r_min = self.c1 * covalent_radii_ij
+    #             r_max = self.c2 * covalent_radii_ij
+    #             if self.mic:
+    #                 distances = candidate.get_mic(new_positions, candidate.positions[j], cell=candidate.cell, pbc=candidate.pbc)
+    #             else:
+    #                 distances = np.linalg.norm(new_positions - candidate.positions[j])
                 
-                if distances < r_min:
-                    return False
-                elif not distances > r_max: # which guranatees the new positions at least have one bond
-                    success = True
-        return success
+    #             if distances < r_min:
+    #                 return False
+    #             elif not distances > r_max: # which guranatees the new positions at least have one bond
+    #                 success = True
+    #     return success
         
 
 class Reconstruction_Generation(Generation):
@@ -423,6 +453,8 @@ class Dissolution_Generation(Generation):
                 conn = np.sum(new_bm, axis=0)
                 if np.all(conn > 0):
                     break
+                else:
+                    candidate = parent.copy()
         return [candidate]
     
     def get_indices_to_dis(self, parent, indices=None, num=1):
@@ -458,19 +490,25 @@ class Dissolution_Generation(Generation):
 def main():
     path = '/Users/ychao/Library/CloudStorage/OneDrive-个人/nus/project/1_RuO2_stability/src/test/dateset/'
     candidate = Candidate.from_atoms(path +'RuO2_110_2x2_4L.vasp')
-    candidate.get_surface()
-    reconstruct = Reconstruction_Generation(candidate, attempts=100)
-    new_candidate = reconstruct.get_candidates()
-    if len(new_candidate) > 0:
-        write(path + 'reconstruct.vasp', new_candidate)
-    dissolution = Dissolution_Generation(candidate, attempts=100)
-    new_candidate = dissolution.get_candidates()
-    if len(new_candidate) > 0:
-        write(path + 'dissolution.vasp', new_candidate)
-    new_1 = Dissolution_Generation(new_candidate[0], attempts=100)
-    new_candidate = new_1.get_candidates()
-    if len(new_candidate) > 0:
-        write(path + 'dissolution_1.vasp', new_candidate)
+    # candidate.get_surface()
+    # reconstruct = Reconstruction_Generation(candidate, attempts=100)
+    # new_candidate = reconstruct.get_candidates()
+    # if len(new_candidate) > 0:
+    #     write(path + 'reconstruct.vasp', new_candidate)
+    # dissolution = Dissolution_Generation(candidate, attempts=100)
+    # new_candidate = dissolution.get_candidates()
+    # if len(new_candidate) > 0:
+    #     write(path + 'dissolution.vasp', new_candidate)
+    # new_1 = Dissolution_Generation(new_candidate[0], attempts=100)
+    # new_candidate = new_1.get_candidates()
+    # if len(new_candidate) > 0:
+    #     write(path + 'dissolution_1.vasp', new_candidate)
+    
+    from ase.build import molecule
+    mol = molecule('CO')
+    growth = Growth_Generation(candidate, mol=mol, attempts=100)
+    new_candidate = growth.get_candidates()
+    print([c.metadata for c in new_candidate])
 
 
 if __name__ == '__main__':

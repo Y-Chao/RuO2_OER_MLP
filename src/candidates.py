@@ -44,15 +44,46 @@ class BaseCandidate(ABC, Atoms):
         kwargs = atoms.todict()
         if 'constraints' in kwargs:
             constraints = kwargs.pop('constraints')
+            # The added or removed atoms will change the index of the constraints.
+            # So we need to update the index of the index.
+
+
             kwargs['constraint'] = constraints
+        if 'initial_magmoms' in kwargs:
+            kwargs.pop('initial_magmoms')
+
         return kwargs
+    
+    def sort_atoms(self):
+        """
+        Sort the atoms by z-value
+        """
+        z = self.positions[:, 2]
+        index = np.argsort(z)
+        self = self[index]
+
+    def candidate2atoms(self):
+        """
+        Convert the candidate to the atoms object.
+        """
+        params = self.parse_atoms()
+        if 'constraints' in params:
+            constraints = params.pop('constraints')
+            params['constraint'] = constraints
+        return Atoms(**params)
     
     def compare(self, identifier):
         for a, b in zip(identifier, self.get_identifier()):
+            if len(a) != len(b):
+                return True
             equal = ( a == b ).all
             if not equal:
                 return equal
         return equal
+    
+    @property
+    def identifier(self):
+        return self.get_identifier()
     
     def get_identifier(self):
         return (self.get_atomic_numbers(), self.get_positions(), self.get_cell(), self.get_pbc())
@@ -61,15 +92,34 @@ class BaseCandidate(ABC, Atoms):
         """
         Copy the candidate.
         """
-        kwarg = self.todict().copy()
+        kwargs = self.parse_atoms()
         metadata = self.metadata.copy()
-        new_candidate = Candidate(self)
+        tmp_atoms = Atoms(**kwargs)
+        new_candidate = Candidate(tmp_atoms)
         try:
             new_candidate.metadata = metadata
         except AttributeError:
             new_candidate.reset_metadata()
         new_candidate.constriants = deepcopy(self.constraints)
         return new_candidate
+    
+    def delete(self, index):
+        """
+        Delete the atoms by index.
+        """
+        from ase.constraints import FixAtoms
+        self.pop(index)
+        constraints = list(self.constraints[0].index)
+        if index in constraints:
+            constraints.remove(index)
+        labels = [ i -1 if i > index else i for i in constraints]
+        self.constraints = FixAtoms(labels)    
+    
+    def append(self, atoms):
+        """
+        Append the atoms to the candidate.
+        """
+        self.extend(Atoms([atoms]))
     
     def has_metadata(self, key):
         """
@@ -270,6 +320,16 @@ class Candidate(BaseCandidate):
         bcal.get_all_bondmatrix_(c_natoms, c_numbers, c_coords, c_bondmatrix, c_cell)
         bm = np.array(c_bondmatrix.contents).reshape(len(self), len(self))
         return bm
+
+class Base_candidate:
+    """
+    Enherits from the Atoms class. Besides, it could benefit for the generations.
+    The most important thing is how to ultilize the atoms object and do not adjust the atoms too much.
+    """
+    #def __init__(self, template: Atoms, )
+
+
+
 
 def main():
     path = '/Users/ychao/Library/CloudStorage/OneDrive-个人/nus/project/1_RuO2_stability/src/test/dateset/RuO2_110_2x2_4L.vasp'
