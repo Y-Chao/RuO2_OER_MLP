@@ -1,18 +1,19 @@
-# Dataset files
-test_lasp/*
-train_NN/*
+# archived
+archived/*
 
-# Presentation files
-weekly_update/*
-
-# tmp
-tmp/*
+# Working dir
+working/*
 
 # vscode congiguration
 .vscode/*
 __pycache__/
 .DS_Store
 
-
-# log files
+# input & output files
+*.xyz
+*.csv
+*.npy
+*.dat
+*.png
+*.out
 *.log

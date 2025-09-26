@@ -1,0 +1,17 @@
+[bulk_info]
+bulk_db = "../working/dataset/RuO2_bulk_opt.db"
+key_info = ["RuO2-Rutile-rpbe"]
+
+[surface_info]
+terminations = [
+] #["Ru", "O"] # For "Ru" or "O" termination, it returns Nonebulk_info = "RuO2-Rutile-pbe"
+miller_index = [0, 1, 1]
+layers = 6 # Layer of Ru-O units
+vacuum = 20 # Angstrom
+min_lattice = 12 # Minimum lattice vector length in Angstrom
+
+[ion_info]
+solvation = "H2O"
+pH = 7            # Option: [1, 7, 14]
+ions = []
+ions_number = []
