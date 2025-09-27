@@ -1,0 +1,25 @@
+[bulk_info]
+bulk_db = "/Users/c_yang/Library/CloudStorage/OneDrive-Personal/nus/project/1_RuO2_stability/working/dataset/RuO2_bulk_opt.db" # [Mandatory] path to the ASE database file containing bulk structures
+sample = "RuO2"         # [Mandatory] name of the material sample
+crystal = "Rutile"      # [Mandatory] crystal structure
+xc = "pbe"              # [Mandatory] exchange-correlation functional, default: PBE
+
+[slab_info]
+miller_index = [0, 1, 1] # [Mandatory] miller index of the surface
+layers = 6               # [Mandatory] number of layers in the slab
+vacuum = 15.0            # [Mandatory] vacuum thickness in Angstrom
+layer_criteria = 0.1     # [Optional] minimum thickness of each layer in Angstrom
+terminations = ["O"]     # [Mandatory] List of possible terminations
+symmetry = true          # [Mandatory] whether to enforce symmetry when cleaving the slab
+fix = "bottom"           # [Optional] "center", "none"
+min_lattice = 10.0       # [Mandatory] minimum lattice parameter along x and y direction
+
+[interface_info]
+solvation = "H2O"        # [Optional] solvation type, default: "H2O"
+num_sol = 0              # [Optional] number of solvent molecules, default: 0
+surface_height = 1.0     # [Optional] add molecules above the surface by this height (in Angstrom)
+pH = 7                   # [Optional] pH value of the solution, default: 7
+ions = ["Cl-", "Na+"]    # [Optional] list of ions to add, e.g. ["Cl-", "Na+"]
+ions_number = [1, 1]     # [Optional] number of each ion, must match length of ions
+verbose = false          # [Optional] whether to print detailed information, default: false
+
