@@ -230,7 +230,17 @@ def calc_sol_num(
     else:
         # Get the maximum z height of the metal atoms
         metal_z_height = [atom.position[2] for atom in slab if atom.number > 18]
-        z = np.linalg.norm(c) - max(metal_z_height) - surf_height  # units: Angstrom
+        try:
+            z = np.linalg.norm(c) - max(
+                metal_z_height
+            )  # - surf_height  # units: Angstrom
+        except ValueError:
+            print(
+                "Warning: No metal atoms found in the slab. Using the maximum z height of all atoms."
+            )
+            z = np.linalg.norm(c) - np.max(
+                slab.positions[:, 2]
+            )  # - surf_height  # units: Angstrom
     sol_volume = slab_area * z * 10**-24  # units: mL
 
     # Solvation section
@@ -243,7 +253,7 @@ def calc_sol_num(
 
 
 def generate_water_box_packmol(
-    a, b, c, sol, num, output_file="water_box.pdb", verbose=False, **kwargs
+    a, b, c, sol, num, output_file="water_box.pdb", seed=2025, verbose=False, **kwargs
 ):
     """
     Generate a water box using packmol.
@@ -286,12 +296,13 @@ def generate_water_box_packmol(
         with open(input_file, "w") as f:
             f.write("# The input file for solvation box build by packmol\n")
             f.write("tolerance 2.0\n")
+            f.write("seed {}\n".format(seed))
             f.write("output {}\n".format(output_file))
             f.write("structure sol.pdb\n")
             f.write("  number {}\n".format(num))
             f.write(
-                "  inside box 0. 0. 0.  {} {} {}\n".format(
-                    a - 1.0, b - 1.0, c - z_height * 2.0
+                "  inside box 0. 0. {} {} {} {}\n".format(
+                    z_height, a - 1.0, b - 1.0, c - z_height * 2.0
                 )
             )
             f.write("end structure\n")
@@ -317,7 +328,7 @@ def generate_water_box_packmol(
 
 
 def generate_water_mol_box_packmol(
-    a, b, c, sol, num, output_file="water_mol.pdb", verbose=False, **kwargs
+    a, b, c, sol, num, output_file="water_mol.pdb", seed=2025, verbose=False, **kwargs
 ):
     """
     Generate a water box with other molecules using packmol.
@@ -337,6 +348,8 @@ def generate_water_mol_box_packmol(
         The number of other molecules.
     molecule_file: str
         The file name of the other molecule.
+    seed: int
+        The random seed for packmol.
     verbose: bool
         Whether to keep the temporary files.
     z_height: float
@@ -353,12 +366,11 @@ def generate_water_mol_box_packmol(
     mol = kwargs.get("molecule", None)
     mol_num = kwargs.get("molecule_number", None)
     region = kwargs.get("region", "bottom")  # Default to bottom region
-    z_region = {
-        "bottom": c / (2 * 3),
-        "middle": c / 3,
-        "top": c / 2,
-    }  # [bottom, lower, middle, top]
+    z_region_k = ["bottom", "middle", "top"]
+    z_region_v = [c / 2 / 3, c / 3, c / 2]
+    z_region = dict(zip(z_region_k, z_region_v))
     z_height = kwargs.get("surface_height", 1.0)
+    # print(f"The region is set to {region}.")
 
     if verbose:
         copy_to_current = True
@@ -376,12 +388,13 @@ def generate_water_mol_box_packmol(
         with open(input_file, "w") as f:
             f.write("# The input file for solvation box build by packmol\n")
             f.write("tolerance 2.0\n")
+            f.write("seed {}\n".format(seed))
             f.write("output {}\n".format(output_file))
             f.write("structure sol.pdb\n")
             f.write("  number {}\n".format(num))
             f.write(
-                "  inside box 0. 0. 0.  {} {} {}\n".format(
-                    a - 1.0, b - 1.0, c - z_height * 2.0
+                "  inside box 0. 0. {} {} {} {}\n".format(
+                    z_height, a - 1.0, b - 1.0, c - z_height * 2.0
                 )
             )
             f.write("end structure\n")
@@ -390,11 +403,32 @@ def generate_water_mol_box_packmol(
                     write(f"mol_{i}.pdb", mol[i])
                     f.write(f"structure mol_{i}.pdb\n")
                     f.write("  number {}\n".format(mol_num[i]))
-                    f.write(
-                        "  inside box 0. 0. 0.  {} {} {}\n".format(
-                            a - 1.0, b - 1.0, z_region[region]
+                    region_idx = z_region_k.index(region)
+                    if region_idx == 0:  # bottom
+                        # For ions, a large ions radius is needed to avoid close contact with water molecules
+                        f.write(
+                            "  inside box 0. 0. {} {} {} {}\n".format(
+                                z_height,
+                                a - 1.0,
+                                b - 1.0,
+                                z_region[region],
+                            )
                         )
-                    )
+                        # print(
+                        #     f"The bottom is  {z_height}, and top at {z_region[region]}."
+                        # )
+                    else:
+                        f.write(
+                            "  inside box 0. 0. {} {} {} {}\n".format(
+                                z_region[z_region_k[region_idx - 1]],
+                                a - 1.0,
+                                b - 1.0,
+                                z_region[region],
+                            )
+                        )
+                        # print(
+                        #     f"The bottom is  {z_region[z_region_k[region_idx - 1]]}, and top at {z_region[region]}."
+                        # )
                     f.write("end structure\n")
 
         with open(input_file, "r") as f:
@@ -438,12 +472,7 @@ def add_water_box(slab, water_box, surf_height):
 
 
 def build_surface_model(
-    bulk,
-    miller_index,
-    layers,
-    vacuum,
-    symmetry,
-    terminations=None,
+    bulk, miller_index, layers, vacuum, symmetry, terminations=None
 ):
     bulk_pmg = AseAtomsAdaptor.get_structure(bulk)
     slab_gen = SlabGenerator(
@@ -458,12 +487,12 @@ def build_surface_model(
         reorient_lattice=True,
     )
     vacuum_size = slab_gen.oriented_unit_cell.lattice.c
-    if vacuum_size > 10:  # Avoid too large OUC
+    if vacuum_size > 20:  # Avoid too large OUC
         raise ValueError(
-            f"The vacuum size is too large: {vacuum_size}. Please check the miller index and layers."
+            f"The oriented unit cell is too large: {vacuum_size}. Please check the miller index and layers."
         )
     tmp_surfaces = slab_gen.get_slabs(
-        ftol=0.5, symmetrize=symmetry, filter_out_sym_slabs=True
+        ftol=0.2, symmetrize=symmetry, filter_out_sym_slabs=True
     )
 
     if len(tmp_surfaces) == 0:
@@ -487,11 +516,14 @@ def build_surface_model(
 def build_interface_model(
     surface: Atoms | Slab,
     solvation="H2O",
+    num_sol: int | None = None,
+    sol_height: float | None = None,
     pH: str = "neutral",
     ions: list[str] | None = None,
     ions_number: list[int] | None = None,
     region: str = "bottom",
     verbose: bool = False,
+    seed: int = 2025,
     **kwargs,
 ):
     """
@@ -510,9 +542,17 @@ def build_interface_model(
     if isinstance(surface, Slab):
         surface = AseAtomsAdaptor.get_atoms(surface)
 
-    num_sol = calc_sol_num(
-        surface, build.molecule("H2O"), density=1.0, surf_height=2.0, scale=1.0
-    )
+    # Add a notation to care about the orthogonal cell
+    if not np.allclose(surface.cell.cellpar()[3:6], 90.0, rtol=0.5):
+        print("Warning: The surface slab is not orthogonal.")
+
+    if num_sol is None:
+        # Calculate the number of solvent molecules
+        num_sol = calc_sol_num(
+            surface, build.molecule("H2O"), density=1.0, surf_height=2.0, scale=1.0
+        )
+    else:
+        num_sol = int(num_sol)
 
     # Handle pH and ions
     extra_mol = []
@@ -536,6 +576,7 @@ def build_interface_model(
                 )
             extra_mol.append(Atoms(str(ion_s.element), positions=[[0, 0, 0]]))
             extra_num.append(ion_num)
+            # print(extra_mol)
 
         if charge > 0 and pH == "acidic":
             msg = f"Adding H3O+ is contradictory to the positive ions {ions}."
@@ -569,9 +610,13 @@ def build_interface_model(
     else:
         msg = "No extra ions added."
 
+    # Define the solvent box size
     slab_cell = surface.cell.cellpar()
     a, b, c = slab_cell[:3]
     c_sup = c - surface.positions[:, 2].max()
+    if sol_height is not None:
+        num_sol = int(num_sol * (sol_height / c_sup))
+        c_sup = sol_height
 
     if extra_mol is not None and extra_num is not None:
         water_box = generate_water_mol_box_packmol(
@@ -584,6 +629,8 @@ def build_interface_model(
             molecule_number=extra_num,
             verbose=verbose,
             region=region,
+            seed=seed,
+            **kwargs,
         )
         msg = f"Interface model with {num_sol} water molecules and extra species {','.join([str(e_mol.get_chemical_formula()) for e_mol in extra_mol])} generated."
     else:
@@ -787,11 +834,13 @@ def run():
             interface = build_interface_model(
                 slab,
                 solvation=conf.interface_info.solvation,
+                num_sol=conf.interface_info.num_sol,
                 surface_height=conf.interface_info.surface_height,
                 pH=conf.interface_info.pH,
                 ions=conf.interface_info.ions,
                 ions_number=conf.interface_info.ions_number,
-                region="bottom",
+                region=conf.interface_info.region,
+                seed=conf.interface_info.seed,
                 verbose=conf.interface_info.verbose,
             )
             write(f"interface_{i+1}.xyz", interface)

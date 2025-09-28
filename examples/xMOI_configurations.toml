@@ -17,9 +17,11 @@ min_lattice = 10.0       # [Mandatory] minimum lattice parameter along x and y d
 [interface_info]
 solvation = "H2O"        # [Optional] solvation type, default: "H2O"
 num_sol = 0              # [Optional] number of solvent molecules, default: 0
+sol_height = 10.0         # [Optional] height of the solvent box above the surface (in Angstrom), default: None
 surface_height = 1.0     # [Optional] add molecules above the surface by this height (in Angstrom)
 pH = 7                   # [Optional] pH value of the solution, default: 7
 ions = ["Cl-", "Na+"]    # [Optional] list of ions to add, e.g. ["Cl-", "Na+"]
 ions_number = [1, 1]     # [Optional] number of each ion, must match length of ions
+region = "bottom"        # [Optional] region to add solvent and ions, "top", "bottom", "both", default: "bottom"
 verbose = false          # [Optional] whether to print detailed information, default: false
 

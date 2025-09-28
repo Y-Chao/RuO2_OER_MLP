@@ -11,6 +11,7 @@ Load toml parameters for building surface and interface models.
 """
 
 import os
+import random
 import tomllib
 from types import SimpleNamespace
 
@@ -42,6 +43,8 @@ def load_surface_toml(file: str):
         "ions",
         "ions_number",
         "verbose",
+        "region",
+        "seed",
     ]
 
     with open(file, "br") as fd:
@@ -86,6 +89,8 @@ def load_surface_toml(file: str):
                     config.get("solvation", None)
                 elif "num_sol" in missing_key:
                     config.get("num_sol", None)
+                elif "sol_height" in missing_key:
+                    config.get("sol_height", None)
                 elif "surface_height" in missing_key:
                     config.get("surface_height", 1.0)
                 elif "pH" in missing_key:
@@ -95,6 +100,10 @@ def load_surface_toml(file: str):
                 elif "ions" in missing_key and "ions_number" in missing_key:
                     config.get("ions", None)
                     config.get("ions_number", None)
+                elif "region" in missing_key:
+                    config.get("region", "bottom")
+                elif "seed" in missing_key:
+                    config.get("seed", random.randint(1, 10000))
                 else:
                     raise KeyError(
                         f"interface is missing the following keys: {missing_key}"

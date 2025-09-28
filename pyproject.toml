@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ase>=3.26.0",
+    "mace-torch>=0.3.14",
     "pymatgen>=2025.6.14",
 ]
