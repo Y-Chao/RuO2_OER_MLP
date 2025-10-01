@@ -1,15 +1,26 @@
-# RuO2_OER_MLP
-The repository for MLP train and OER investigation.
+# Extended Metal Oxide Interface (xMOI)
+Extended Metal Oxide Interface (xMOI) is a Python library designed to model, calculate and visualize the properties of metal (oxide) interfaces, particularly in the context of electrocatalysis. As our expectation, the library will provide tools for constructing surface/interface models, performing different calculations using various computational chemistry packages, and analyzing the results.
 
-**2024.10.25**
-- Modify the candidates.
-- Modify the generations
-- How to link the calculator to generations.
-- How to set learning workflow.
+## Installation
+You can install xMOI using pip:
+```bash
+git clone https://github.com/yourusername/xMOI.git
+cd xMOI
+pip install .
+```
 
-**2024.10.26**
-- Modify the candidates.
-    - When pop some atom in dissolution, the fixed atom will distrub.
-    - get_surface() will get stuck in loop due to find the metal atoms.
-- Growth method can not success in vacuum. It need a atom, it is not correct.
-- Grow is tend to attach to the new grow atom, due to the get_surface is depend on the z-zxis.
+
+## Usage
+
+```python
+from xMOI import SurfaceModel
+
+# Create a surface model
+model = SurfaceModel(bulk_structure="path/to/bulk/structure")
+
+# Generate surface models
+model.generate_surface_models()
+
+# Analyze the results
+model.analyze_results()
+```

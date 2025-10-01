@@ -14,6 +14,7 @@ It is recommended to use uMLIP.
 import os
 
 from ase import units
+from ase.io import Trajectory, read, write
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 
 
@@ -28,6 +29,7 @@ def quick_equilibrium(
     thermostat="Nose-Hoover",
     barostat="Nose-Hoover",
     device="cpu",
+    output="quick_equilibrium.traj",
 ):
     """
     Run quick equilibrium simulation using uMLIP potential.
@@ -112,6 +114,8 @@ def quick_equilibrium(
                 temperature_K=temperature,
                 friction=0.02,
             )
+            traj = Trajectory(output, "w", atoms)
+            dyn.attach(traj, interval=10)
             dyn.run(nsteps)
             return atoms
 
@@ -166,3 +170,110 @@ def atm2au(pressure_atm):
     atm = 101325  # Pa
 
     return pa2au(pressure_atm * atm)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Quick equilibrium simulation using uMLIP."
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        required=True,
+        help="Input structure file (e.g., POSCAR, cif, xyz).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="equilibrated.xyz",
+        help="Output equilibrated structure file.",
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        required=True,
+        help="MLIP model to use: 'uma' or 'mace'.",
+    )
+    parser.add_argument(
+        "-t",
+        "--temperature",
+        type=float,
+        default=300.0,
+        help="Temperature in Kelvin. Default is 300 K.",
+    )
+    parser.add_argument(
+        "-e",
+        "--ensemble",
+        type=str,
+        default="NVT",
+        help="Ensemble type: 'NVT' or 'NPT'. Default is 'NVT'.",
+    )
+    parser.add_argument(
+        "-p",
+        "--pressure",
+        type=float,
+        default=1.0,
+        help="Pressure in atm (only for NPT). Default is 1.0 atm.",
+    )
+    parser.add_argument(
+        "-n",
+        "--nsteps",
+        type=int,
+        default=1000,
+        help="Number of MD steps. Default is 1000.",
+    )
+    parser.add_argument(
+        "-d",
+        "--timestep",
+        type=float,
+        default=1.0,
+        help="Time step in fs. Default is 1.0 fs.",
+    )
+    parser.add_argument(
+        "--thermostat",
+        type=str,
+        default="Nose-Hoover",
+        help="Thermostat type for NVT: 'Nose-Hoover' or 'Langevin'. Default is 'Nose-Hoover'.",
+    )
+    parser.add_argument(
+        "--barostat",
+        type=str,
+        default="Berendsen",
+        help="Barostat type for NPT: 'Berendsen'. Default is 'Berendsen'.",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="Device to run the simulation: 'cpu' or 'cuda'. Default is 'cpu'.",
+    )
+    return parser.parse_args()
+
+
+def main():
+    print("[Usage] python quick_equilibrium.py -h firstly to see the usage.")
+    args = parse_args()
+
+    atoms = read(args.input)
+
+    equilibrated_atoms = quick_equilibrium(
+        atoms,
+        model=args.model,
+        temperature=args.temperature,
+        pressure=args.pressure,
+        nsteps=args.nsteps,
+        timestep=args.timestep,
+        ensemble=args.ensemble,
+        thermostat=args.thermostat,
+        barostat=args.barostat,
+        device=args.device,
+    )
+
+    write(args.output, equilibrated_atoms)
+
+
+if __name__ == "__main__":
+    main()

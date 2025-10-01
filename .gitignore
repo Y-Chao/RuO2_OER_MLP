@@ -3,11 +3,17 @@ archived/*
 
 # Working dir
 working/*
+working/deprecated/
 
-# vscode congiguration
+# Vscode configuration
 .vscode/*
 __pycache__/
 .DS_Store
+
+# Hidden files
+.venv/
+.env/
+.*
 
 # input & output files
 *.xyz

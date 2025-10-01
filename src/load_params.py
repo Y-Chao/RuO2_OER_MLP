@@ -61,12 +61,12 @@ def load_surface_toml(file: str):
             missing_key = set(Default_surface_parameters) - set(value.keys())
             if missing_key:
                 if "layer_criteria" in missing_key:
-                    config.get("layer_criteria", 0.5)
+                    config[key].setdefault("layer_criteria", 0.5)
                 elif "fix" in missing_key:
                     if value["symmetry"]:
-                        config.get("fix", None)
+                        config[key].setdefault("fix", None)
                     else:
-                        config.get("fix", "bottom")
+                        config[key].setdefault("fix", "bottom")
                 else:
                     raise KeyError(
                         f"surface is missing the following keys: {missing_key}"
@@ -86,34 +86,28 @@ def load_surface_toml(file: str):
             missing_key = set(Default_solvation_parameters) - set(value.keys())
             if missing_key:
                 if "solvation" in missing_key:
-                    config.get("solvation", None)
+                    config[key].setdefault("solvation", None)
                 elif "num_sol" in missing_key:
-                    config.get("num_sol", None)
+                    config[key].setdefault("num_sol", 0)
                 elif "sol_height" in missing_key:
-                    config.get("sol_height", None)
+                    config[key].setdefault("sol_height", None)
                 elif "surface_height" in missing_key:
-                    config.get("surface_height", 1.0)
+                    config[key].setdefault("surface_height", 1.0)
                 elif "pH" in missing_key:
-                    config.get("pH", 7)
+                    config[key].setdefault("pH", 7)
                 elif "verbose" in missing_key:
-                    config.get("verbose", False)
+                    config[key].setdefault("verbose", False)
                 elif "ions" in missing_key and "ions_number" in missing_key:
-                    config.get("ions", None)
-                    config.get("ions_number", None)
+                    config[key].setdefault("ions", None)
+                    config[key].setdefault("ions_number", None)
                 elif "region" in missing_key:
-                    config.get("region", "bottom")
+                    config[key].setdefault("region", "bottom")
                 elif "seed" in missing_key:
-                    config.get("seed", random.randint(1, 10000))
+                    config[key].setdefault("seed", random.randint(1, 10000))
                 else:
                     raise KeyError(
                         f"interface is missing the following keys: {missing_key}"
                     )
-            if len(value["ions"]) == 0 and isinstance(value["ions"], list):
-                value["ions"] = None
-            if len(value["ions_number"]) == 0 and isinstance(
-                value["ions_number"], list
-            ):
-                value["ions_number"] = None
 
             if len(value["ions"]) != len(value["ions_number"]):
                 raise KeyError("the ions number should equals to ions")

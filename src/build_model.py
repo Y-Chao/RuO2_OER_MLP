@@ -117,15 +117,33 @@ def check_termination(slab: Slab, terminations: list[str] | str) -> bool:
     return set(terminations) == top_elements
 
 
-def move_to_bottom(slab: Slab | Atoms) -> Atoms:
+def move_to_bottom(slab: Slab | Atoms, vacuum: float, eps: float = 1e-5) -> Atoms:
     """
     Move the slab to the bottom of the cell.
     """
     if isinstance(slab, Slab):
         slab = AseAtomsAdaptor.get_atoms(slab)
+    slab.wrap()
     z_min = slab.positions[:, 2].min()
+    z_max = slab.positions[:, 2].max()
+    i = 1
+    while not (
+        z_min < slab.cell[2, 2] / 2
+        and z_max > slab.cell[2, 2] / 2
+        and z_max - z_min > slab.cell[2, 2] - vacuum
+    ):
+        slab.positions[:, 2] += vacuum / i
+        slab.wrap()
+        z_max = slab.positions[:, 2].max()
+        z_min = slab.positions[:, 2].min()
+        print(z_min, z_max, slab.cell[2, 2], vacuum, i)
+        i += 1
+        if i > 10:
+            raise ValueError("Cannot move the slab to the bottom of the cell.")
+
     slab.positions[:, 2] -= z_min
     slab.wrap()
+    #  print(slab.positions[:, 2].min(), slab.positions[:, 2].max())
     return slab
 
 
@@ -136,10 +154,11 @@ def extend_vacuum(slab: Slab, vacuum: float, orig_vacuum: float) -> Slab:
     then modify the lattice.
     """
     ase_slab = AseAtomsAdaptor.get_atoms(slab)
+    ase_slab = move_to_bottom(ase_slab, vacuum)
     new_lattice = np.array(ase_slab.cell)
     new_lattice[2, 2] += vacuum - orig_vacuum
     ase_slab.set_cell(new_lattice)
-    ase_slab = move_to_bottom(ase_slab)
+
     return ase_slab
 
 
@@ -302,7 +321,7 @@ def generate_water_box_packmol(
             f.write("  number {}\n".format(num))
             f.write(
                 "  inside box 0. 0. {} {} {} {}\n".format(
-                    z_height, a - 1.0, b - 1.0, c - z_height * 2.0
+                    z_height, a - 1.0, b - 1.0, c - z_height * 1.0
                 )
             )
             f.write("end structure\n")
@@ -394,7 +413,7 @@ def generate_water_mol_box_packmol(
             f.write("  number {}\n".format(num))
             f.write(
                 "  inside box 0. 0. {} {} {} {}\n".format(
-                    z_height, a - 1.0, b - 1.0, c - z_height * 2.0
+                    z_height, a - 1.0, b - 1.0, c - z_height * 1.0
                 )
             )
             f.write("end structure\n")
@@ -465,7 +484,7 @@ def add_water_box(slab, water_box, surf_height):
         The slab with water box
     """
     z_max = slab.positions[:, 2].max()
-    water_box.positions[:, 2] += z_max + surf_height
+    water_box.positions[:, 2] += z_max + surf_height - water_box.positions[:, 2].min()
     slab_water = slab + water_box
     slab_water.wrap()
     return slab_water
@@ -546,7 +565,7 @@ def build_interface_model(
     if not np.allclose(surface.cell.cellpar()[3:6], 90.0, rtol=0.5):
         print("Warning: The surface slab is not orthogonal.")
 
-    if num_sol is None:
+    if num_sol == 0:
         # Calculate the number of solvent molecules
         num_sol = calc_sol_num(
             surface, build.molecule("H2O"), density=1.0, surf_height=2.0, scale=1.0
@@ -561,7 +580,13 @@ def build_interface_model(
 
     # First handle the ions effect, then pH effect
     # based on the ions number, and equilibrium
-    if ions and ions_number:
+    if isinstance(ions, list):
+        if len(ions) == 0:
+            add_ions = False
+        else:
+            add_ions = True
+
+    if ions and ions_number and add_ions:
         if len(ions) != len(ions_number):
             raise ValueError("The length of ions and ions_number must be the same.")
 
@@ -606,14 +631,18 @@ def build_interface_model(
             ]
             extra_num += [int(-charge)]
     elif ions or ions_number:
-        raise ValueError("Both ions and ions_number must be provided.")
+        print("Warning: ions and ions_number must be both provided.")
     else:
         msg = "No extra ions added."
 
     # Define the solvent box size
     slab_cell = surface.cell.cellpar()
     a, b, c = slab_cell[:3]
+    # to handle the atoms located on both sides of the cell
     c_sup = c - surface.positions[:, 2].max()
+
+    # print("c_sup is: {:.2f} Angstrom".format(c_sup))
+
     if sol_height is not None:
         num_sol = int(num_sol * (sol_height / c_sup))
         c_sup = sol_height
@@ -634,7 +663,16 @@ def build_interface_model(
         )
         msg = f"Interface model with {num_sol} water molecules and extra species {','.join([str(e_mol.get_chemical_formula()) for e_mol in extra_mol])} generated."
     else:
-        water_box = generate_water_box_packmol(a, b, c_sup, sol=solvation, num=num_sol)
+        water_box = generate_water_box_packmol(
+            a,
+            b,
+            c_sup,
+            sol=solvation,
+            num=num_sol,
+            seed=seed,
+            verbose=verbose,
+            **kwargs,
+        )
         msg = f"Interface model with {num_sol} water molecules generated."
 
     if water_box is None:
@@ -752,14 +790,15 @@ def parse_arguments():
     return args
 
 
-def run():
-    args = parse_arguments()
+def run(config_file: str):
+    # args = parse_arguments()
     package_info = boxed("Extended Metal Oxide Interface", pad=5)
     print(package_info)
-    print("\n")
+    # print("\n")
 
     ############################ Load configuratiuons ############################
-    conf = load_surface_toml(args.tomp_file)
+    print(f"Load configurations from TOML file: {config_file}")
+    conf = load_surface_toml(config_file)
 
     ############################ Load bulk structures ############################
     task_info = marquee("Load bulk structures", width=78)
@@ -843,6 +882,12 @@ def run():
                 seed=conf.interface_info.seed,
                 verbose=conf.interface_info.verbose,
             )
+            # print("slab.positions", np.max(slab.positions[:, 2]))
+            if interface.arrays.get("bulk_wyckoff", None) is not None:
+                interface.arrays.pop("bulk_wyckoff")
+            if interface.arrays.get("bulk_equivalent", None) is not None:
+                interface.arrays.pop("bulk_equivalent")
+            print(interface.__dict__)
             write(f"interface_{i+1}.xyz", interface)
             print(f"Interface model {i+1}")
             print(indent(f"{detailed_interface(interface, conf)}", 4))
@@ -850,4 +895,5 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    args = parse_arguments()
+    run(args.tomp_file)
