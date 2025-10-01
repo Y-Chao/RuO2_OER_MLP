@@ -1,5 +1,5 @@
 [bulk_info]
-bulk_db = "/Users/c_yang/Library/CloudStorage/OneDrive-Personal/nus/project/1_RuO2_stability/working/dataset/RuO2_bulk_opt.db" # [Mandatory] path to the ASE database file containing bulk structures
+bulk_db = "./RuO2_bulk_opt.db" # [Mandatory] path to the ASE database file containing bulk structures
 sample = "RuO2"         # [Mandatory] name of the material sample
 crystal = "Rutile"      # [Mandatory] crystal structure
 xc = "pbe"              # [Mandatory] exchange-correlation functional, default: PBE

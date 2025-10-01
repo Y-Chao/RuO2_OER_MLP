@@ -12,7 +12,7 @@ __pycache__/
 
 # Hidden files
 .venv/
-.env/
+.env
 .*
 
 # input & output files
