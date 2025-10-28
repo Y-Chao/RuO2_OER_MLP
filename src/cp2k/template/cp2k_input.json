@@ -2,7 +2,7 @@
     "default_section": {
         "global": {
             "project": "cp2k"
-            },
+        },
         "force_eval": {
             "method": "Quickstep",
             "dft": {
@@ -18,44 +18,21 @@
                 "scf": {
                     "scf_guess": "restart",
                     "eps_scf": 1e-06,
-                    "max_scf": 500,
-                    "added_mos": 500,
-                    "cholesky": "inverse",
-                    "smear": {
-                        "-": "on",
-                        "method": "fermi_dirac",
-                        "electronic_temperature": 300
-                    },
-                    "diagonalization": {
-                        "algorithm": "standard"
-                    },
-                    "mixing": {
-                        "method": "broyden_mixing",
-                        "alpha": 0.3,
-                        "beta": 1.5,
-                        "nbuffer": 8
+                    "max_scf": 20,
+                    "outer_scf": {
+                        "max_scf": 20,
+                        "eps_scf": 1.0E-6
                     }
                 },
                 "xc": {
                     "xc_functional": {
                         "-": "pbe"
-                        },
-                    "vdw_potential": {
-                        "dispersion_functional": "pair_potential",
-                        "pair_potential": {
-                            "type": "dftd3",
-                            "parameter_file_name": "./dftd3.dat",
-                            "reference_functional": "pbe",
-                            "calculate_c9_term": true,
-                            "reference_c9_term": true,
-                            "r_cutoff": 12.0
-                        }
                     }
                 },
                 "print": {
                     "mo_cubes": {
                         "write_cube": "false"
-                     }
+                    }
                 }
             },
             "subsys": {
@@ -85,6 +62,9 @@
     "cellopt_section": {
         "global": {
             "run_type": "cell_opt"
+        },
+        "force_eval": {
+            "stress_tensor": "analytical"
         },
         "motion": {
             "cell_opt": {
@@ -125,7 +105,6 @@
                 "optimizer": "bfgs",
                 "max_iter": 200,
                 "max_force": 4e-5
-
             },
             "print": {
                 "trajectory": {
@@ -157,9 +136,9 @@
                 "ensemble": "nvt",
                 "timestep": 0.5,
                 "steps": 2000000,
-                "temperature": 300,
+                "temperature": 330,
                 "thermostat": {
-                    "nose": {}
+                    "region": "global"
                 }
             },
             "print": {
@@ -199,15 +178,10 @@
                     "extrapolation_order": 0
                 },
                 "scf": {
-                    "smear": {},
-                    "diagonalization": {},
-                    "mixing": {},
                     "scf_guess": "restart",
                     "eps_scf": 5e-07,
-                    "max_scf": 50,
+                    "max_scf": 20,
                     "max_scf_history": 5,
-                    "cholesky": "inverse_dbcsr",
-                    "added_mos": 0,
                     "outer_scf": {
                         "max_scf": 20,
                         "eps_scf": 1.0E-6
@@ -215,7 +189,7 @@
                     "ot": {
                         "minimizer": "diis",
                         "precond_solver": "inverse_update",
-                        "preconditioner": "full_single_inversion",
+                        "preconditioner": "full_single_inverse",
                         "stepsize": 0.01
                     },
                     "print": {
@@ -301,6 +275,30 @@
             }
         }
     },
+    "diagonalization_section": {
+        "force_eval": {
+            "dft": {
+                "scf": {
+                    "added_mos": 500,
+                    "cholesky": "inverse",
+                    "smear": {
+                        "-": "on",
+                        "method": "fermi_dirac",
+                        "electronic_temperature": 300
+                    },
+                    "diagonalization": {
+                        "algorithm": "standard"
+                    },
+                    "mixing": {
+                        "method": "broyden_mixing",
+                        "alpha": 0.3,
+                        "beta": 1.5,
+                        "nbuffer": 8
+                    }
+                }
+            }
+        }
+    },
     "ot_section": {
         "force_eval": {
             "dft": {
@@ -308,8 +306,107 @@
                     "ot": {
                         "minimizer": "diis",
                         "precond_solver": "inverse_update",
-                        "preconditioner": "full_single_inversion",
+                        "preconditioner": "full_single_inverse",
                         "stepsize": 0.01
+                    }
+                }
+            }
+        }
+    },
+    "xc_scan_section": {
+        "force_eval": {
+            "dft": {
+                "xc": {
+                    "xc_functional": {
+                        "MGGA_X_RSCAN": {},
+                        "MGGA_C_RSCAN": {}
+                    }
+                }
+            }
+        }
+    },
+    "xc_revpbe_section": {
+        "force_eval": {
+            "dft": {
+                "xc": {
+                    "xc_functional": {
+                        "pbe": {
+                            "parametrization": "revpbe"
+                        }
+                    },
+                    "xc_grid": {
+                        "xc_deriv": "spline2_smooth"
+                    }
+                }
+            }
+        }
+    },
+    "vdw_revpbe_d3_section": {
+        "force_eval": {
+            "dft": {
+                "xc": {
+                    "vdw_potential": {
+                        "potential_type": "pair_potential",
+                        "pair_potential": {
+                            "type": "dftd3",
+                            "r_cutoff": 15,
+                            "long_range_correction": "true",
+                            "reference_functional": "revpbe",
+                            "parameter_file_name": "dftd3.dat"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "vdw_pbe_d3_section": {
+        "force_eval": {
+            "dft": {
+                "xc": {
+                    "vdw_potential": {
+                        "dispersion_functional": "pair_potential",
+                        "pair_potential": {
+                            "type": "dftd3",
+                            "parameter_file_name": "./dftd3.dat",
+                            "reference_functional": "pbe",
+                            "calculate_c9_term": true,
+                            "reference_c9_term": true,
+                            "r_cutoff": 12.0
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "nh_thermo_section": {
+        "motion": {
+            "md": {
+                "ensemble": "nvt",
+                "thermostat": {
+                    "region": "global",
+                    "type": "nose",
+                    "nose": {
+                        "length": 3,
+                        "yoshida": 3,
+                        "timecon": 200
+                    }
+                }
+            }
+        }
+    },
+    "csvr_thermo_section": {
+        "motion": {
+            "md": {
+                "ensemble": "nvt",
+                "thermostat": {
+                    "region": "global",
+                    "type": "csvr",
+                    "csvr": {
+                        "timecon": 100
+                    },
+                    "ad_langevin": {
+                        "timecon_langevin": 5,
+                        "timecon_nh": 5
                     }
                 }
             }

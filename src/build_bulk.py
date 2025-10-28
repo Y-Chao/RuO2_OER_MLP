@@ -12,9 +12,11 @@ import os
 import numpy as np
 from ase.calculators.vasp import Vasp
 from ase.db import connect
-from ase.io import read
+from ase.io import read, write
 from monty.string import indent, marquee
 from mp_api.client import MPRester
+
+from cp2k.cp2k_input import CP2KInput
 
 """
 Build the bulk database from materials project.
@@ -111,7 +113,7 @@ def update_dict(dict, **kwargs):
     return dict
 
 
-def prepare_calculation(
+def prepare_calculation_vasp(
     dbname: str,
     xc: list[str] | str = "PBE",
     kspacing: float = 0.2,
@@ -210,6 +212,55 @@ def prepare_calculation(
                 )
 
 
+def prepare_calculation_cp2k(dbname, xc: list[str] | str = "PBE", **kwargs):
+    if isinstance(dbname, str):
+        db = connect(dbname)
+    else:
+        db = dbname
+    for row in db.select():
+        params = row.key_value_pairs
+        atoms = db.get_atoms(row.id)
+
+        update_params = update_dict(params, **kwargs)
+        for ppp in xc:
+            input = CP2KInput(
+                atoms, task="cell_opt", precision="norm", xc=ppp, ot=False
+            )
+            outdir = f"{update_params.get('sample','unknown')}_{update_params.get('crystal','p1')}_{update_params.get('xc',ppp)}_{update_params.get('material_id','mp0000')}"
+            if not os.path.isdir(outdir):
+                try:
+                    os.makedirs(outdir)
+                except FileExistsError as e:
+                    msg = f"Directory {outdir} already exists."
+                    raise RuntimeError(msg) from e
+            input.write_input(os.path.join(outdir, "cp2k.inp"))
+            write(atoms, os.path.join(outdir, "init.xyz"))
+            print(
+                marquee(
+                    f" Calculation input files for {row.material_id} prepared ",
+                    80,
+                    "*",
+                )
+            )
+
+
+def prepare_calculation(dbname, xc="PBE", calc_inplace=False, package="vasp", **kwargs):
+    """
+    Prepare the calculation input files for the bulk structures.
+    """
+    if package.lower() == "vasp":
+        prepare_calculation_vasp(dbname, xc=xc, calc_inplace=calc_inplace, **kwargs)
+    elif package.lower() == "cp2k":
+        if calc_inplace:
+            raise NotImplementedError(
+                "In-place calculation for CP2K is not implemented."
+            )
+        else:
+            raise NotImplementedError("CP2K input file preparation is not implemented.")
+    else:
+        raise ValueError(f"Package {package} is not supported.")
+
+
 def check_converage(outcar_path):
     converage = False
     with open(outcar_path) as fd:
@@ -298,6 +349,12 @@ def parse_args():
         default=".",
         help="Working directory for the calculations, by default current directory.",
     )
+    parser.add_argument(
+        "--package",
+        type=str,
+        default="vasp",
+        help="DFT package to use, by default 'vasp'.",
+    )
     return parser.parse_args()
 
 
@@ -314,7 +371,9 @@ def main():
     db = parse_bulk_data(args.database, docs, args.xc)
 
     if not args.update_db:
-        prepare_calculation(db, xc=args.xc, calc_inplace=args.calc_inplace)
+        prepare_calculation(
+            db, xc=args.xc, calc_inplace=args.calc_inplace, package=args.package
+        )
     else:
         update_db(db, args.workdir)
 

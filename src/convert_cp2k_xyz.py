@@ -26,6 +26,80 @@ except ImportError:
     raise ImportError("Please install dpdata package: pip install dpdata")
 
 
+class quick_Cp2kOutput:
+    """
+    A class to parse CP2K output files and extract relevant information.
+
+    Parameters:
+    -----------
+    path (str): Path to the CP2K output file.
+    prefix_path (str): Prefix path for related files.
+    """
+
+    def __init__(self, path: str, prefix_path: str = ".") -> None:
+        self.path = path
+        self.prefix_path = prefix_path
+        self.all_energies = []
+        self.all_forces = []
+        self.all_stresses = []
+        self.all_cells = []
+        self.num_frames = 0
+
+    @property
+    def num_frames(self) -> int:
+        return self.get_num_frames()
+    
+    @property
+    def all_cells(self) -> np.ndarray:
+        return self.get_all_cells()
+    
+    def get_md_info(self, ensemble_type: str = "NVT", filename: str = None) -> dict:
+        """
+        Get MD information from the CP2K output file.
+
+        Parameters:
+        -----------
+        ensemble_type (str): Type of ensemble used in the MD simulation. Default is "NVT".
+        filename (str): Path to the CP2K output file. If None, use self.path.
+
+        Returns:
+        --------
+        dict: A dictionary containing MD information.
+        """
+        if filename is None:
+            filename = self.path
+        
+        
+    
+    def parse_md_info(self):
+        """
+        Parse MD information from the CP2K output file.
+        """
+        self.md_info = self.get_md_info(ensemble_type="NVT",
+                                        filename=self.path)
+        
+
+    
+    def get_num_frames(self) -> int:
+        """
+        Get the number of frames in the CP2K output file.
+
+        Returns:
+        --------
+        int: Number of frames.
+        """
+        pass
+    
+    def parse_cells(self, lines: list[str]) -> None:
+        """
+        Parse cell information from CP2K output lines.
+
+        Parameters:
+        -----------
+        lines (list of str): Lines from the CP2K output file.
+        """
+        pass
+
 def get_project_name(path: str) -> str:
     """
     Extract project name from a file path.
@@ -65,6 +139,15 @@ def get_dump_xyz_freq(path: str) -> int:
                 return filename, freq
     raise ValueError("Cannot find dump xyz frequency in the CP2K output file.")
 
+def parser_cp2k_output(path: str):
+    """
+    Parse CP2K output file using dpdata.
+
+    Parameters:
+    -----------
+    path (str): Path to the CP2K output file.
+    """
+    pass
 
 def atoms_list(path: str, cell_info: np.ndarray, dump_freq: int = 1) -> list:
     """
@@ -136,8 +219,14 @@ def collect_cp2k_md(paths: list[str], output: str) -> list[Atoms]:
     for path in paths:
         prefix_path = os.path.dirname(path)
         output_file = os.path.basename(path)
-        cp2k_output = Cp2kOutput(path, prefix_path=prefix_path)
-        num_frames = cp2k_output.num_frames
+        try:
+            cp2k_output = Cp2kOutput(path, prefix_path=prefix_path)
+            num_frames = cp2k_output.num_frames
+        except Exception as e:
+            print(f"[Error] Cp2kOutput failed to parse {output_file}, skipping.")
+            print("[Hint] We extract MD information by homemade parser")
+            cp2k_output = 
+
         scf_converge = SCF_convergence_list(path)
         if len(scf_converge) != num_frames:
             raise ValueError(

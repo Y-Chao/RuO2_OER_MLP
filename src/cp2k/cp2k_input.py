@@ -1,12 +1,26 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-
+"""
+Refer to:
+https://github.com/chenggroup/ChecMatE/checmate/pretask/sets.py
+"""
 __author__ = "Chao Yang"
 __version__ = "1.0"
 
 """
-Generate the input files.
+Generate the input files from a template file and updated by user defined config file.
+Classes:
+    - Cp2kInput: Generate the input files for different cp2k calculations.
+Functions:
+    - load_config: Load the template config file
+    - update_dict: Update the dictionary
+    - iterdict: Iteratively parse the dictionary to a list
+    - find_key_in_nested_dict: Find the key in the nested dictionary
+    - reformat_list: Reformat the index list, such as for 1, 2, 3, 4, 5 -> "1..5"
+To do:
+    - All keys and subsections should be upper case, which is the lowercase in the value.
+    - The basis set and potential set should be more flexible.
 """
 
 import copy
@@ -104,16 +118,24 @@ def iterdict(input_dict: dict, outlist: list = ["\n"], loop_level: int = 0):
         key = key.upper()
         if isinstance(value, dict):
             outlist.insert(-1 - loop_level, f"{'  '*loop_level}&" + key)
-            outlist.insert(-1 - loop_level, f"{'  '*loop_level}&END" + key)
+            outlist.insert(-1 - loop_level, f"{'  '*loop_level}&END " + key)
             iterdict(value, outlist, loop_level + 1)
         elif isinstance(value, list):
             for v in value:
                 outlist.insert(-1 - loop_level, f"{'  '*loop_level}&" + key)
-                outlist.insert(-1 - loop_level, f"{'  '*loop_level}&END" + key)
+                outlist.insert(-1 - loop_level, f"{'  '*loop_level}&END " + key)
                 iterdict(v, outlist, loop_level + 1)
         else:
             if value not in chemical_symbols:
-                value = str(value).upper()
+                if isinstance(value, str):
+                    if len(value.split(".")) > 1:
+                        value = str(value).lower()
+                    elif value.lower() in ["revpbe"]:
+                        value = "revPBE"
+                    else:
+                        value = str(value).upper()
+                else:
+                    value = str(value)
             if key == "-":
                 outlist[start_index] = outlist[start_index] + " " + value
             else:
@@ -166,12 +188,15 @@ def reformat_list(index):
 class Cp2kInput:
     """
     It is used to generate the input files for different cp2k calculations.
+    Firstly,
     """
 
     def __init__(
         self,
         structure: Atoms,
         task: str = "geo_opt",
+        xc: str = "PBE",
+        vdw: str = None,
         precision: str = "normal",
         user_config: dict = {},
         template_path: str = None,
@@ -181,13 +206,14 @@ class Cp2kInput:
         self.task = task
         self.precision = precision
         self.user_config = user_config
+        self.xc = xc if xc is not None else "PBE"
+        self.vdw = vdw
         self.template_config = load_config(template_path)
         self.kwargs = kwargs
 
     @property
     def cp2kinp(self):
         """Generate the input file"""
-
         cp2kinp = self.initialize_cp2kinp()
 
         # update the atomoic information
@@ -216,6 +242,17 @@ class Cp2kInput:
         update_dict(cp2kinp, cell_config)
         update_dict(cp2kinp, dft_param_config)
         update_dict(cp2kinp, kind_config)
+        if self.xc.lower() != "pbe":
+            if self.xc.lower() == "scan":
+                xc_config = self.template_config["xc_scan_section"]
+            elif self.xc.lower() == "revpbe":
+                xc_config = self.template_config["xc_revpbe_section"]
+            else:
+                raise ValueError("The xc functional is not supported.")
+            update_dict(cp2kinp, xc_config)
+        if self.vdw is not None:
+            vdw_config = self.set_vdw()
+            update_dict(cp2kinp, vdw_config)
         return cp2kinp
 
     def initialize_cp2kinp(self):
@@ -242,6 +279,25 @@ class Cp2kInput:
             update_dict(init_cp2kinp, self.template_config["cellopt_section"])
         elif self.task == "bomd":
             update_dict(init_cp2kinp, self.template_config["bomd_section"])
+            if "thermostat" in self.kwargs:
+                if self.kwargs["thermostat"].lower() == "csvr":
+                    update_dict(
+                        init_cp2kinp, self.template_config["csvr_thermo_section"]
+                    )
+                elif self.kwargs["thermostat"].lower() == "nose-hoover":
+                    update_dict(
+                        init_cp2kinp,
+                        self.template_config["nh_thermo_section"],
+                    )
+                else:
+                    raise ValueError(
+                        f"The thermostat {self.kwargs['thermostat']} is not supported."
+                    )
+            else:
+                print(
+                    "No thermostat is specified, using the default nose-hoover thermostat."
+                )
+                update_dict(init_cp2kinp, self.template_config["nh_thermo_section"])
         elif self.task == "sgcpmd":
             update_dict(init_cp2kinp, self.template_config["sgcpmd_section"])
         elif self.task == "restart":
@@ -252,7 +308,11 @@ class Cp2kInput:
             raise ValueError("The task is not supported.")
 
         if self.kwargs.get("ot", False):
+            print("Using the orbital transformation method.")
             update_dict(init_cp2kinp, self.template_config["ot_section"])
+        else:
+            print("Using the default diagonalization method.")
+            update_dict(init_cp2kinp, self.template_config["diagonalization_section"])
 
         return init_cp2kinp
 
@@ -325,39 +385,113 @@ class Cp2kInput:
         kind_config = {"force_eval": {"subsys": {"kind": []}}}
 
         default_molopt_dict = {
-            "Cu": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q11"},
-            "Au": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q11"},
-            "Ag": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q11"},
-            "Pd": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q10"},
+            "Cu": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q11", "scan": "GTH-SCAN-q11"},
+            },
+            "Au": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q11", "scan": "GTH-SCAN-q11"},
+            },
+            "Ag": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q11", "scan": "GTH-SCAN-q11"},
+            },
+            "Pd": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q10", "scan": "GTH-SCAN-q10"},
+            },
             "Pt": {
                 "basis_set": "DZVP-A5-Q10-323-MOL-T1-DERIVED_SET-1",
-                "potential": "GTH-PBE-q10",
+                "potential": {"pbe": "GTH-PBE-q10", "scan": "GTH-SCAN-q10"},
             },
-            "Ru": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE"},
-            "Co": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE"},
-            "Ni": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE"},
-            "Fe": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE"},
-            "O": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q6"},
-            "H": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q1"},
-            "C": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q4"},
-            "N": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q5"},
-            "S": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q6"},
-            "Li": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q3"},
-            "Na": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q9"},
-            "K": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q9"},
-            "Rb": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q9"},
-            "Cs": {"basis_set": "DZVP-MOLOPT-SR-GTH", "potential": "GTH-PBE-q9"},
+            "Ru": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE", "scan": "GTH-SCAN"},
+            },
+            "Co": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE", "scan": "GTH-SCAN"},
+            },
+            "Ni": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE", "scan": "GTH-SCAN"},
+            },
+            "Fe": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE", "scan": "GTH-SCAN"},
+            },
+            "O": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q6", "scan": "GTH-SCAN-q6"},
+            },
+            "H": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q1", "scan": "GTH-SCAN-q1"},
+            },
+            "C": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q4", "scan": "GTH-SCAN-q4"},
+            },
+            "N": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q5", "scan": "GTH-SCAN-q5"},
+            },
+            "S": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q6", "scan": "GTH-SCAN-q6"},
+            },
+            "Li": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q3", "scan": "GTH-SCAN-q3"},
+            },
+            "Na": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q9", "scan": "GTH-SCAN-q9"},
+            },
+            "K": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q9", "scan": "GTH-SCAN-q9"},
+            },
+            "Rb": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q9", "scan": "GTH-SCAN-q9"},
+            },
+            "Cs": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q9", "scan": "GTH-SCAN-q9"},
+            },
+            "Cl": {
+                "basis_set": "DZVP-MOLOPT-SR-GTH",
+                "potential": {"pbe": "GTH-PBE-q7", "scan": "GTH-SCAN-q7"},
+            },
         }
 
         for ele in elements:
+            if self.xc.lower() in ["pbe", "revpbe"]:
+                xc = "pbe"
+            elif self.xc.lower() == "scan":
+                xc = "scan"
+            else:
+                raise ValueError(f"The xc functional {self.xc} is not supported.")
             kind_config["force_eval"]["subsys"]["kind"].append(
                 {
                     "-": ele,
                     "basis_set": default_molopt_dict[ele]["basis_set"],
-                    "potential": default_molopt_dict[ele]["potential"],
+                    "potential": default_molopt_dict[ele]["potential"][xc],
                 }
             )
         return kind_config
+
+    def set_vdw(self):
+        """
+        Update the vdw information
+        """
+        if self.vdw.lower() == "dftd3":
+            vdw_config = self.template_config[f"vdw_{self.xc.lower()}_d3_section"]
+        else:
+            raise ValueError(f"The vdw method {self.vdw} is not supported.")
+        return vdw_config
 
     def write_cp2kinp(self, fpath: str):
         """
@@ -388,9 +522,12 @@ def main():
         atoms,
         task="bomd",
         precision="normal",
+        xc="revpbe",
+        vdw="dftd3",
         user_config=user_config,
         template_path=MODULE_DIR / "template" / "cp2k_input.json",
         ot=True,
+        thermostat="csvr",
     ).write_cp2kinp("./cp2k_md.inp")
 
 

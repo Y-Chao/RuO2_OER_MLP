@@ -99,6 +99,15 @@ def fix_surface(slab: Atoms | Slab, fix: str, layers: int) -> Atoms:
         )
 
 
+def clean_matrix(matrix, eps=1e-12):
+    """clean from small values, source from ase.build.supercells"""
+    matrix = np.array(matrix)
+    for ij in np.ndindex(matrix.shape):
+        if abs(matrix[ij]) < eps:
+            matrix[ij] = 0
+    return matrix
+
+
 def check_termination(slab: Slab, terminations: list[str] | str) -> bool:
     """
     Check if the slab has the desired terminations.
@@ -117,17 +126,16 @@ def check_termination(slab: Slab, terminations: list[str] | str) -> bool:
     return set(terminations) == top_elements
 
 
-def move_to_bottom(slab: Slab | Atoms, vacuum: float, eps: float = 1e-5) -> Atoms:
+def move_to_bottom(slab: Slab | Atoms, vacuum: float, eps: float = 1e-4) -> Atoms:
     """
     Move the slab to the bottom of the cell.
     """
     if isinstance(slab, Slab):
         slab = AseAtomsAdaptor.get_atoms(slab)
-    slab.wrap()
     z_min = slab.positions[:, 2].min()
     z_max = slab.positions[:, 2].max()
     i = 1
-    while not (
+    while (
         z_min < slab.cell[2, 2] / 2
         and z_max > slab.cell[2, 2] / 2
         and z_max - z_min > slab.cell[2, 2] - vacuum
@@ -142,23 +150,27 @@ def move_to_bottom(slab: Slab | Atoms, vacuum: float, eps: float = 1e-5) -> Atom
             raise ValueError("Cannot move the slab to the bottom of the cell.")
 
     slab.positions[:, 2] -= z_min
-    slab.wrap()
+    slab.wrap(eps=eps)
     #  print(slab.positions[:, 2].min(), slab.positions[:, 2].max())
     return slab
 
 
-def extend_vacuum(slab: Slab, vacuum: float, orig_vacuum: float) -> Slab:
+def extend_vacuum(slab: Slab | Atoms, vacuum: float, orig_vacuum: float) -> Slab:
     """
     Extend the vacuum of the slab to the desired value.
     Structure in pymatgen is hard to modify, so we first convert it to ASE Atoms,
     then modify the lattice.
     """
-    ase_slab = AseAtomsAdaptor.get_atoms(slab)
-    ase_slab = move_to_bottom(ase_slab, vacuum)
-    new_lattice = np.array(ase_slab.cell)
-    new_lattice[2, 2] += vacuum - orig_vacuum
-    ase_slab.set_cell(new_lattice)
+    if isinstance(slab, Slab):
+        ase_slab = AseAtomsAdaptor.get_atoms(slab)
+    else:
+        ase_slab = slab
 
+    new_lattice = clean_matrix(ase_slab.cell.array, eps=1e-5)
+    new_lattice[2, 2] += vacuum - orig_vacuum
+    ase_slab.set_cell(new_lattice, scale_atoms=False)
+    # write("debug_slab.vasp", ase_slab)
+    ase_slab = move_to_bottom(ase_slab, vacuum - orig_vacuum)
     return ase_slab
 
 
@@ -846,6 +858,7 @@ def run(config_file: str):
     )
 
     print(f"Generated {len(surfaces)} surface models.")
+    new_surfaces = []
     for i, s in enumerate(surfaces):
         slab = fix_surface(
             s,
@@ -853,6 +866,7 @@ def run(config_file: str):
             layers=conf.slab_info.layers,
         )
         slab = make_simple_supercell(slab, conf.slab_info.min_lattice)
+        new_surfaces.append(slab)
         # write(f"slab_{i+1}.xyz", slab)
         print(f"Surface model {i+1}")
         print(indent(f"{detailed_slab(slab, conf)}", 4))
@@ -869,9 +883,9 @@ def run(config_file: str):
         print(indent(f"Ions: {conf.interface_info.ions}", 4))
         print(indent(f"Ions number: {conf.interface_info.ions_number}", 4))
         print("\n")
-        for i, s in enumerate(surfaces):
+        for i, s in enumerate(new_surfaces):
             interface = build_interface_model(
-                slab,
+                s,
                 solvation=conf.interface_info.solvation,
                 num_sol=conf.interface_info.num_sol,
                 surface_height=conf.interface_info.surface_height,
@@ -887,7 +901,6 @@ def run(config_file: str):
                 interface.arrays.pop("bulk_wyckoff")
             if interface.arrays.get("bulk_equivalent", None) is not None:
                 interface.arrays.pop("bulk_equivalent")
-            print(interface.__dict__)
             write(f"interface_{i+1}.xyz", interface)
             print(f"Interface model {i+1}")
             print(indent(f"{detailed_interface(interface, conf)}", 4))

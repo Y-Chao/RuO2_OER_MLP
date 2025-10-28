@@ -11,6 +11,7 @@ This module is to run equilibrium simulation quickly, to advoid the force field 
 It is recommended to use uMLIP.
 """
 
+import argparse
 import os
 
 from ase import units

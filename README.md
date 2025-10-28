@@ -120,7 +120,7 @@ pip install .
     verbose = false              # [Optional] whether to print detailed information, default: false
     ```
 * Among the above parameters,
-    * If you do not set the `num_sol`, it will be calculated based on the density of water at room temperature (1 g/cm$^3$).
+    * If you do not set the `num_sol`, it will be calculated based on the density of water at room temperature (1 g/cm3).
     * If you do not set the `sol_height`, it will be set to the vacuum thickness.
     * If you do not set the `surface_height`, it will be set to 1.0 Angstrom by default.
     * For `pH`, you have three options: 0, 7, and 14, which correspond to acidic, neutral, and basic conditions, respectively.
@@ -133,6 +133,7 @@ pip install .
 * The interface generation code is based on [packmol](http://www.packmol.org/) and [ASE](https://wiki.fysik.dtu.dk/ase/).
 
 ## To Do
+- [ ] To solve the reduction of water numbers when multiple ions added to the solvation box.
 - [ ] To patch the surface models which utilize the `SlabGenerator` class in `pymatgen`.
 - [ ] To patch the surface/interface models with adsorbates.
 - [ ] Integrated with DFT packages, such as [VASP](https://www.vasp.at/), [CP2K](https://www.cp2k.org/), [GPAW](https://wiki.fysik.dtu.dk/gpaw/), etc. To provide the input files generation and output files parsing functions.

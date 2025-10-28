@@ -3,8 +3,6 @@ import sys
 from ase.data import atomic_numbers
 from ase.io import lammpsdata, read
 
-# def out_fixed_index(index, c_index):
-
 print("Usage: python convert_lammps.py <input_xyz> <output_lammps_data>")
 
 struc = read(sys.argv[1])
